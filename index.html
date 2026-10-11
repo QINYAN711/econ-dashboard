@@ -155,14 +155,14 @@ html, body { margin: 0; background: var(--color-bg); color: var(--color-fg); fon
 
   <section id="g-econ"><h2>就業與景氣</h2><div class="gx-grid">
 <article class="gx-card" id="card-nfp">
-  <div class="gx-ch"><div><h3>非農就業</h3><p class="gx-en">Non-Farm Payrolls · 近 3 個月平均月增</p></div>
+  <div class="gx-ch"><div><h3>非農就業</h3><p class="gx-en">Non-Farm Payrolls · 當月較上月變化</p></div>
   <span class="gx-badge"><i class="dot"></i><span data-k="nfp" data-source="readings" data-field="light_label">—</span></span></div>
   <div class="gx-valrow"><span class="gx-big dash-skeleton" data-k="nfp" data-source="readings" data-field="value">—</span><span class="gx-unit">千人</span></div>
-  <p class="gx-sub">單月變化 <span class="gx-plus" data-plus="nfp" data-plus-field="level"></span><span data-k="nfp" data-source="readings" data-field="level">—</span> 千人 · 資料月份 <span data-k="nfp" data-source="readings" data-field="asof">—</span></p>
+  <p class="gx-sub">近 3 個月平均 <span class="gx-plus" data-plus="nfp" data-plus-field="level"></span><span data-k="nfp" data-source="readings" data-field="level">—</span> 千人 · 資料月份 <span data-k="nfp" data-source="readings" data-field="asof">—</span></p>
   <div class="gx-chart" data-source="readings"></div>
   <div class="gx-strip" data-source="readings" aria-label="每月燈號"></div>
-  <p class="gx-rule">綠:&gt; 0 · 黃:0 ~ −50 · 紅:&lt; −50(千人)</p>
-  <p class="gx-note">美國非農就業人數月增量,取 3 個月平均以降低單月雜訊。來源:BLS(經 FRED PAYEMS)。</p>
+  <p class="gx-rule">綠:較上月增加 · 黃:小幅減少(0 ~ 5 萬人)· 紅:減少超過 5 萬人</p>
+  <p class="gx-note">美國非農就業人數當月較上月的增減;下方另列近 3 個月平均供參考。來源:BLS(經 FRED PAYEMS)。</p>
 </article>
 <article class="gx-card" id="card-ism_mfg">
   <div class="gx-ch"><div><h3>ISM 製造業 PMI</h3><p class="gx-en">ISM Manufacturing PMI</p></div>
@@ -283,10 +283,10 @@ dash.calc('readings', {
     // band(值, 綠燈條件, 黃燈條件);都不符合即紅燈
     const band = (v, green, yellow) => (green(v) ? 1 : yellow(v) ? 0 : -1);
     const IND = {
-      // 非農就業:近 3 個月平均月增(千人)
+      // 非農就業:當月比上月的就業人數變化(千人);增加綠燈、小幅減少(0 ~ −50)黃燈、減少超過 50 紅燈
       nfp: { src: 'PAYEMS', round: r1, rule: (v) => band(v, (x) => x > 0, (x) => x >= -50),
-        calc: (m) => { const p = S.PAYEMS; const d = (k) => p[shift(m, -k)] - p[shift(m, -k - 1)]; return (d(0) + d(1) + d(2)) / 3; },
-        level: (m) => S.PAYEMS[m] - S.PAYEMS[shift(m, -1)] },
+        calc: (m) => S.PAYEMS[m] - S.PAYEMS[shift(m, -1)],
+        level: (m) => { const p = S.PAYEMS; const d = (k) => p[shift(m, -k)] - p[shift(m, -k - 1)]; return (d(0) + d(1) + d(2)) / 3; } },
       ism_mfg: { src: 'ISM_MFG', round: r1, rule: (v) => band(v, (x) => x >= 51, (x) => x >= 49), calc: (m) => S.ISM_MFG[m] },
       ism_svc: { src: 'ISM_SVC', round: r1, rule: (v) => band(v, (x) => x >= 51, (x) => x >= 49), calc: (m) => S.ISM_SVC[m] },
       // 聯邦基金利率:6 個月變化(百分點)
