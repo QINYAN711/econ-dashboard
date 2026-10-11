@@ -1,0 +1,539 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>全球景氣燈號儀表板</title>
+<meta name="description" content="美國九大景氣指標燈號、近兩年趨勢與綜合景氣分數,依各指標公布時程自動更新。">
+<style>
+:root {
+  --color-bg: #faf9f6; --color-panel: #ffffff; --color-fg: #1f1e1c; --color-fg-muted: #6b6862;
+  --color-border-line: #e4e1da; --color-ok: #2e8b57; --color-bad: #d23c32;
+  --cds-chart-grid: #ece9e3; --cds-chart-axis: #c9c5bc; --cds-chart-reference: #a8a49b; --cds-chart-muted: #d8d4cc;
+  --cds-surface-popover: #ffffff; --cds-border: #dcd8d0; --cds-text-secondary: #6b6862;
+  --cds-shadow-popover: 0 4px 16px rgba(0,0,0,.10);
+  --chart-1: #3b6fd8;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-bg: #1a1918; --color-panel: #242321; --color-fg: #ecebe8; --color-fg-muted: #a39f97;
+    --color-border-line: #3a3835; --color-ok: #4fb27a; --color-bad: #ef6158;
+    --cds-chart-grid: #33312e; --cds-chart-axis: #4a4844; --cds-chart-reference: #6f6b64; --cds-chart-muted: #4a4844;
+    --cds-surface-popover: #2c2b28; --cds-border: #45433f; --cds-text-secondary: #a39f97;
+    --cds-shadow-popover: 0 4px 16px rgba(0,0,0,.5);
+    --chart-1: #7ea2ef;
+  }
+}
+:root {
+  --font-anthropic-sans: system-ui, -apple-system, "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", sans-serif;
+  --font-anthropic-serif: Georgia, "Noto Serif TC", "PMingLiU", serif;
+  --cds-font-size-caption: .8125rem; --cds-font-size-body: .9375rem; --cds-font-size-heading: 1.125rem; --cds-font-size-title: 1.75rem;
+  --cds-font-weight-medium: 600;
+  --cds-gap-xs: 4px; --cds-gap-sm: 8px; --cds-gap-md: 16px; --cds-gap-xl: 32px;
+  --cds-pad-xs: 4px; --cds-pad-sm: 8px; --cds-pad-lg: 20px;
+  --cds-radius: 10px; --cds-dur-slow: .3s;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--color-bg); color: var(--color-fg); font-family: var(--font-anthropic-sans); }
+#dash-root { padding: clamp(16px, 4vw, 40px); }
+.dash-skeleton { color: transparent !important; background: var(--cds-chart-muted); border-radius: 4px; }
+.gx-site-foot { max-width: 82rem; margin: var(--cds-gap-xl) auto 0; color: var(--color-fg-muted); font-size: var(--cds-font-size-caption); line-height: 1.7; }
+</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+<script>
+// 簡易資料層:讀取 data/ 下的 JSON,提供頁面使用的 dash 介面
+(function () {
+  const files = { fred_monthly: 'data/fred_monthly.json', fred_latest: 'data/fred_latest.json', ism: 'data/ism.json' };
+  const store = {}, calcs = {}, subs = [];
+  for (const id in files) store[id] = { status: 'loading', data: [] };
+  const run = () => {
+    for (const [id, c] of Object.entries(calcs)) {
+      const ins = c.inputs.map((i) => store[i]);
+      if (ins.some((s) => s.status === 'error')) store[id] = { status: 'error', data: [] };
+      else if (ins.every((s) => s.status === 'ok')) {
+        try { store[id] = { status: 'ok', data: c.fn(...ins.map((s) => s.data)) }; }
+        catch (e) { console.error(e); store[id] = { status: 'error', data: [] }; }
+      }
+    }
+    subs.forEach((f) => { try { f(); } catch (e) { console.error(e); } });
+  };
+  window.dash = {
+    colors: ['var(--chart-1)'],
+    calc: (id, o) => { calcs[id] = o; store[id] = { status: 'loading', data: [] }; },
+    data: (id) => store[id] || { status: 'missing', data: [] },
+    onData: (fn) => { subs.push(fn); if (document.readyState !== 'loading') fn(); },
+  };
+  const bust = '?v=' + Date.now();
+  const load = () => Promise.all(Object.entries(files).map(([id, url]) =>
+    fetch(url + bust).then((r) => { if (!r.ok) throw 0; return r.json(); })
+      .then((d) => { store[id] = { status: 'ok', data: d }; })
+      .catch(() => { store[id] = { status: 'error', data: [] }; })));
+  fetch('data/meta.json' + bust).then((r) => r.json()).then((m) => {
+    const el = document.getElementById('site-updated');
+    if (el && m.updated) el.textContent = new Date(m.updated).toLocaleString('zh-TW', { timeZone: 'Asia/Taipei', dateStyle: 'medium', timeStyle: 'short' });
+  }).catch(() => {});
+  let resizeT;
+  window.addEventListener('resize', () => { clearTimeout(resizeT); resizeT = setTimeout(run, 150); });
+  document.addEventListener('DOMContentLoaded', () => load().then(run));
+})();
+</script>
+</head>
+<body>
+<div id="dash-root">
+<style>
+.gx { --gx-yellow: #F5C400; display: flex; flex-direction: column; gap: var(--cds-gap-xl); font-family: var(--font-anthropic-sans); max-width: 82rem; margin-inline: auto; }
+.gx h1 { font-family: var(--font-anthropic-serif); font-weight: 400; font-size: var(--cds-font-size-title); margin: 0; }
+.gx h2 { font-size: var(--cds-font-size-heading); font-weight: var(--cds-font-weight-medium); margin: 0 0 var(--cds-gap-sm); }
+.gx h3 { font-size: var(--cds-font-size-body); font-weight: var(--cds-font-weight-medium); margin: 0; }
+.gx p { margin: 0; }
+.gx-take { color: var(--color-fg-muted); margin-top: var(--cds-gap-xs); line-height: 1.6; }
+.gx-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr)); gap: var(--cds-gap-md); }
+.gx-card { background: var(--color-panel); border: 1px solid var(--color-border-line); border-radius: var(--cds-radius); padding: var(--cds-pad-lg); display: flex; flex-direction: column; gap: var(--cds-gap-sm); min-width: 0; }
+.gx-ch { display: flex; justify-content: space-between; align-items: flex-start; gap: var(--cds-gap-sm); }
+.gx-en, .gx-note, .gx-rule, .gx-label { color: var(--color-fg-muted); font-size: var(--cds-font-size-caption); line-height: 1.5; }
+.gx-valrow { display: flex; align-items: baseline; gap: var(--cds-gap-xs); }
+.gx-big { font-family: var(--font-anthropic-serif); font-weight: 400; font-size: calc(var(--cds-font-size-title) * 1.35); font-variant-numeric: tabular-nums; line-height: 1.1; }
+.gx-huge { font-family: var(--font-anthropic-serif); font-weight: 400; font-size: calc(var(--cds-font-size-title) * 2); font-variant-numeric: tabular-nums; line-height: 1; }
+.gx-unit { color: var(--color-fg-muted); font-size: var(--cds-font-size-caption); }
+.gx-sub { font-size: var(--cds-font-size-caption); font-variant-numeric: tabular-nums; line-height: 1.6; }
+.gx-badge { display: inline-flex; align-items: center; gap: var(--cds-gap-xs); font-size: var(--cds-font-size-caption); white-space: nowrap; padding: 2px var(--cds-pad-sm); border: 1px solid var(--color-border-line); border-radius: 999px; }
+.gx .dot { width: .7rem; height: .7rem; border-radius: 50%; display: inline-block; background: var(--cds-chart-muted); flex: none; }
+.gx .lg { background: var(--color-ok); } .gx .ly { background: var(--gx-yellow); } .gx .lr { background: var(--color-bad); }
+.gx-chart { position: relative; min-height: 140px; }
+.gx-chart.tall { min-height: 200px; }
+.gx-strip { display: flex; gap: 2px; height: 8px; }
+.gx-strip span { flex: 1; border-radius: 2px; background: var(--cds-chart-muted); }
+.gx-strip span.lg { background: var(--color-ok); } .gx-strip span.ly { background: var(--gx-yellow); } .gx-strip span.lr { background: var(--color-bad); }
+.gx-tip { position: absolute; pointer-events: none; background: var(--cds-surface-popover); border: 1px solid var(--cds-border); border-radius: var(--cds-radius); box-shadow: var(--cds-shadow-popover); padding: var(--cds-pad-xs) var(--cds-pad-sm); font-size: var(--cds-font-size-caption); white-space: nowrap; z-index: 2; display: none; }
+.gx-tip .t { color: var(--cds-text-secondary); }
+.gx-fail { display: flex; align-items: center; justify-content: center; gap: var(--cds-gap-xs); min-height: inherit; color: var(--color-fg-muted); font-size: var(--cds-font-size-caption); }
+.gx-fail i { width: .375rem; height: .375rem; border-radius: 50%; background: var(--color-bad); }
+.gx-counts { display: flex; gap: var(--cds-gap-md); font-size: var(--cds-font-size-body); font-variant-numeric: tabular-nums; }
+.gx-counts span { display: inline-flex; align-items: center; gap: var(--cds-gap-xs); }
+.gx-outlook { font-family: var(--font-anthropic-serif); font-size: var(--cds-font-size-title); font-weight: 400; }
+.gx-list { margin: 0; padding-left: 1.2em; font-size: var(--cds-font-size-caption); line-height: 1.7; }
+.gx-method { font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); line-height: 1.7; }
+.gx-method ul { margin: var(--cds-gap-xs) 0 0; padding-left: 1.2em; }
+[data-dash-source-state=empty] { color: transparent; }
+[data-dash-source-state=refreshing] { opacity: .5; transition: opacity var(--cds-dur-slow); }
+.gx .gx-plus { color: inherit; }
+</style>
+
+<div class="gx">
+  <header id="top">
+    <h1>全球景氣九大指標燈號儀表板</h1>
+    <p class="gx-take" id="takeaway">綜合分數 <span class="dash-skeleton" data-source="score" data-field="idx" data-where="month=now">—</span> / 100,屬「<span class="dash-skeleton" data-source="score" data-field="outlook" data-where="month=now">—</span>」區間;九項指標中 <span data-source="score" data-field="n_green" data-where="month=now">—</span> 綠、<span data-source="score" data-field="n_yellow" data-where="month=now">—</span> 黃、<span data-source="score" data-field="n_red" data-where="month=now">—</span> 紅。<span id="take-warn"></span></p>
+  </header>
+
+  <section id="overview" class="gx-grid">
+    <article class="gx-card" id="score-card">
+      <p class="gx-label">綜合景氣分數(0–100,越高越好)</p>
+      <div class="gx-valrow"><span class="gx-huge dash-skeleton" data-source="score" data-field="idx" data-where="month=now">—</span><span class="gx-unit">/ 100</span></div>
+      <div class="gx-counts">
+        <span><i class="dot lg"></i>綠 <b data-source="score" data-field="n_green" data-where="month=now">—</b></span>
+        <span><i class="dot ly"></i>黃 <b data-source="score" data-field="n_yellow" data-where="month=now">—</b></span>
+        <span><i class="dot lr"></i>紅 <b data-source="score" data-field="n_red" data-where="month=now">—</b></span>
+      </div>
+      <p class="gx-note">3 個月前(<span id="prev-month">—</span>):<span id="prev-idx" data-source="score" data-field="idx">—</span> 分,「<span id="prev-outlook" data-source="score" data-field="outlook">—</span>」</p>
+    </article>
+    <article class="gx-card" id="outlook-card">
+      <p class="gx-label">未來半年景氣展望</p>
+      <p class="gx-outlook dash-skeleton" data-source="score" data-field="outlook" data-where="month=now">—</p>
+      <p class="gx-sub" id="outlook-trend"></p>
+      <ul class="gx-list">
+        <li>殖利率曲線:<span data-k="curve" data-source="readings" data-field="light_label">—</span></li>
+        <li>信用利差:<span data-k="hy" data-source="readings" data-field="light_label">—</span></li>
+        <li>ISM 製造業 PMI:<span data-k="ism_mfg" data-source="readings" data-field="light_label">—</span></li>
+      </ul>
+      <p class="gx-note">以上三項對未來 6–12 個月景氣最具前瞻性,計分時加權 1.5 倍。</p>
+    </article>
+    <article class="gx-card" id="score-trend" style="grid-column: 1 / -1;">
+      <div class="gx-ch"><div><h3>綜合分數走勢</h3><p class="gx-en">近 24 個月,每月依當時可得的最新讀數計算;虛線為 70(擴張)、55(溫和成長)、40(放緩)分界</p></div></div>
+      <div class="gx-chart tall" id="score-chart" data-source="score"></div>
+    </article>
+  </section>
+
+  <section id="g-econ"><h2>就業與景氣</h2><div class="gx-grid">
+<article class="gx-card" id="card-nfp">
+  <div class="gx-ch"><div><h3>非農就業</h3><p class="gx-en">Non-Farm Payrolls · 近 3 個月平均月增</p></div>
+  <span class="gx-badge"><i class="dot"></i><span data-k="nfp" data-source="readings" data-field="light_label">—</span></span></div>
+  <div class="gx-valrow"><span class="gx-big dash-skeleton" data-k="nfp" data-source="readings" data-field="value">—</span><span class="gx-unit">千人</span></div>
+  <p class="gx-sub">單月變化 <span class="gx-plus" data-plus="nfp" data-plus-field="level"></span><span data-k="nfp" data-source="readings" data-field="level">—</span> 千人 · 資料月份 <span data-k="nfp" data-source="readings" data-field="asof">—</span></p>
+  <div class="gx-chart" data-source="readings"></div>
+  <div class="gx-strip" data-source="readings" aria-label="每月燈號"></div>
+  <p class="gx-rule">綠:&gt; 0 · 黃:0 ~ −50 · 紅:&lt; −50(千人)</p>
+  <p class="gx-note">美國非農就業人數月增量,取 3 個月平均以降低單月雜訊。來源:BLS(經 FRED PAYEMS)。</p>
+</article>
+<article class="gx-card" id="card-ism_mfg">
+  <div class="gx-ch"><div><h3>ISM 製造業 PMI</h3><p class="gx-en">ISM Manufacturing PMI</p></div>
+  <span class="gx-badge"><i class="dot"></i><span data-k="ism_mfg" data-source="readings" data-field="light_label">—</span></span></div>
+  <div class="gx-valrow"><span class="gx-big dash-skeleton" data-k="ism_mfg" data-source="readings" data-field="value">—</span></div>
+  <p class="gx-sub">較上月 <span class="gx-plus" data-plus="ism_mfg" data-plus-field="delta"></span><span data-k="ism_mfg" data-source="readings" data-field="delta">—</span> · 資料月份 <span data-k="ism_mfg" data-source="readings" data-field="asof">—</span></p><p class="gx-note">交叉檢查:費城聯準製造業調查 <span id="philly" data-source="fred_monthly" data-field="value">—</span>(<span id="philly-m">—</span>,0 以上為擴張)</p>
+  <div class="gx-chart" data-source="readings"></div>
+  <div class="gx-strip" data-source="readings" aria-label="每月燈號"></div>
+  <p class="gx-rule">綠:≥ 51 · 黃:49 ~ 51 · 紅:&lt; 49</p>
+  <p class="gx-note">高於 50 代表製造業擴張。來源:ISM 月報(自動搜尋並以第二來源核對)。</p>
+</article>
+<article class="gx-card" id="card-ism_svc">
+  <div class="gx-ch"><div><h3>ISM 服務業 PMI</h3><p class="gx-en">ISM Services PMI</p></div>
+  <span class="gx-badge"><i class="dot"></i><span data-k="ism_svc" data-source="readings" data-field="light_label">—</span></span></div>
+  <div class="gx-valrow"><span class="gx-big dash-skeleton" data-k="ism_svc" data-source="readings" data-field="value">—</span></div>
+  <p class="gx-sub">較上月 <span class="gx-plus" data-plus="ism_svc" data-plus-field="delta"></span><span data-k="ism_svc" data-source="readings" data-field="delta">—</span> · 資料月份 <span data-k="ism_svc" data-source="readings" data-field="asof">—</span></p>
+  <div class="gx-chart" data-source="readings"></div>
+  <div class="gx-strip" data-source="readings" aria-label="每月燈號"></div>
+  <p class="gx-rule">綠:≥ 51 · 黃:49 ~ 51 · 紅:&lt; 49</p>
+  <p class="gx-note">高於 50 代表服務業擴張。來源:ISM 月報(自動搜尋並以第二來源核對)。</p>
+</article></div></section>
+  <section id="g-rates"><h2>利率與通膨</h2><div class="gx-grid">
+<article class="gx-card" id="card-ffr">
+  <div class="gx-ch"><div><h3>聯邦基金利率</h3><p class="gx-en">Federal Funds Rate · 有效利率</p></div>
+  <span class="gx-badge"><i class="dot"></i><span data-k="ffr" data-source="readings" data-field="light_label">—</span></span></div>
+  <div class="gx-valrow"><span class="gx-big dash-skeleton" data-k="ffr" data-source="readings" data-field="level">—</span><span class="gx-unit">%</span></div>
+  <p class="gx-sub">6 個月變化 <span class="gx-plus" data-plus="ffr" data-plus-field="value"></span><span data-k="ffr" data-source="readings" data-field="value">—</span> 個百分點 · 截至 <span data-k="ffr" data-source="readings" data-field="asof">—</span></p>
+  <div class="gx-chart" data-source="readings"></div>
+  <div class="gx-strip" data-source="readings" aria-label="每月燈號"></div>
+  <p class="gx-rule">依 6 個月變化:綠:降 ≥ 0.5 · 黃:變動 &lt; 0.5 · 紅:升 ≥ 0.5(百分點)</p>
+  <p class="gx-note">趨勢圖為利率的 6 個月變化。來源:FRED DFF(日)/ FEDFUNDS(月)。</p>
+</article>
+<article class="gx-card" id="card-curve">
+  <div class="gx-ch"><div><h3>殖利率曲線</h3><p class="gx-en">10 年期 − 3 個月期公債殖利率</p></div>
+  <span class="gx-badge"><i class="dot"></i><span data-k="curve" data-source="readings" data-field="light_label">—</span></span></div>
+  <div class="gx-valrow"><span class="gx-big dash-skeleton" data-k="curve" data-source="readings" data-field="value">—</span><span class="gx-unit">百分點</span></div>
+  <p class="gx-sub">較上期 <span class="gx-plus" data-plus="curve" data-plus-field="delta"></span><span data-k="curve" data-source="readings" data-field="delta">—</span> · 截至 <span data-k="curve" data-source="readings" data-field="asof">—</span></p>
+  <div class="gx-chart" data-source="readings"></div>
+  <div class="gx-strip" data-source="readings" aria-label="每月燈號"></div>
+  <p class="gx-rule">綠:&gt; +0.25 · 黃:±0.25 · 紅:&lt; −0.25(倒掛)</p>
+  <p class="gx-note">正斜率代表市場預期經濟成長;倒掛常領先衰退。來源:FRED T10Y3M。</p>
+</article>
+<article class="gx-card" id="card-pce">
+  <div class="gx-ch"><div><h3>核心 PCE 物價</h3><p class="gx-en">Core PCE Price Index · 年增率</p></div>
+  <span class="gx-badge"><i class="dot"></i><span data-k="pce" data-source="readings" data-field="light_label">—</span></span></div>
+  <div class="gx-valrow"><span class="gx-big dash-skeleton" data-k="pce" data-source="readings" data-field="value">—</span><span class="gx-unit">%</span></div>
+  <p class="gx-sub">較上月 <span class="gx-plus" data-plus="pce" data-plus-field="delta"></span><span data-k="pce" data-source="readings" data-field="delta">—</span> 個百分點 · 資料月份 <span data-k="pce" data-source="readings" data-field="asof">—</span></p>
+  <div class="gx-chart" data-source="readings"></div>
+  <div class="gx-strip" data-source="readings" aria-label="每月燈號"></div>
+  <p class="gx-rule">綠:1.5 ~ 2.5% · 黃:2.5 ~ 3% 或 1 ~ 1.5% · 紅:&gt; 3% 或 &lt; 1%</p>
+  <p class="gx-note">聯準會最關注的通膨指標,目標 2%。來源:BEA(經 FRED PCEPILFE)。</p>
+</article></div></section>
+  <section id="g-risk"><h2>市場風險</h2><div class="gx-grid">
+<article class="gx-card" id="card-hy">
+  <div class="gx-ch"><div><h3>信用利差</h3><p class="gx-en">高收益債選擇權調整利差(ICE BofA)</p></div>
+  <span class="gx-badge"><i class="dot"></i><span data-k="hy" data-source="readings" data-field="light_label">—</span></span></div>
+  <div class="gx-valrow"><span class="gx-big dash-skeleton" data-k="hy" data-source="readings" data-field="value">—</span><span class="gx-unit">%</span></div>
+  <p class="gx-sub">較上期 <span class="gx-plus" data-plus="hy" data-plus-field="delta"></span><span data-k="hy" data-source="readings" data-field="delta">—</span> · 截至 <span data-k="hy" data-source="readings" data-field="asof">—</span></p>
+  <div class="gx-chart" data-source="readings"></div>
+  <div class="gx-strip" data-source="readings" aria-label="每月燈號"></div>
+  <p class="gx-rule">綠:&lt; 4% · 黃:4 ~ 6% · 紅:&gt; 6%</p>
+  <p class="gx-note">利差擴大代表市場擔心企業違約、風險偏好下降。來源:FRED BAMLH0A0HYM2。</p>
+</article>
+<article class="gx-card" id="card-tips">
+  <div class="gx-ch"><div><h3>TIPS 利差</h3><p class="gx-en">10 年期平衡通膨率</p></div>
+  <span class="gx-badge"><i class="dot"></i><span data-k="tips" data-source="readings" data-field="light_label">—</span></span></div>
+  <div class="gx-valrow"><span class="gx-big dash-skeleton" data-k="tips" data-source="readings" data-field="value">—</span><span class="gx-unit">%</span></div>
+  <p class="gx-sub">較上期 <span class="gx-plus" data-plus="tips" data-plus-field="delta"></span><span data-k="tips" data-source="readings" data-field="delta">—</span> · 截至 <span data-k="tips" data-source="readings" data-field="asof">—</span></p>
+  <div class="gx-chart" data-source="readings"></div>
+  <div class="gx-strip" data-source="readings" aria-label="每月燈號"></div>
+  <p class="gx-rule">綠:1.8 ~ 2.4% · 黃:2.4 ~ 2.7% 或 1.5 ~ 1.8% · 紅:&gt; 2.7% 或 &lt; 1.5%</p>
+  <p class="gx-note">公債與抗通膨債的殖利率差,反映市場預期的長期通膨。來源:FRED T10YIE。</p>
+</article>
+<article class="gx-card" id="card-vix">
+  <div class="gx-ch"><div><h3>VIX 恐慌指數</h3><p class="gx-en">CBOE Volatility Index</p></div>
+  <span class="gx-badge"><i class="dot"></i><span data-k="vix" data-source="readings" data-field="light_label">—</span></span></div>
+  <div class="gx-valrow"><span class="gx-big dash-skeleton" data-k="vix" data-source="readings" data-field="value">—</span></div>
+  <p class="gx-sub">較上期 <span class="gx-plus" data-plus="vix" data-plus-field="delta"></span><span data-k="vix" data-source="readings" data-field="delta">—</span> · 截至 <span data-k="vix" data-source="readings" data-field="asof">—</span></p>
+  <div class="gx-chart" data-source="readings"></div>
+  <div class="gx-strip" data-source="readings" aria-label="每月燈號"></div>
+  <p class="gx-rule">綠:15 ~ 20 · 黃:20 ~ 30 或 &lt; 15 · 紅:&gt; 30</p>
+  <p class="gx-note">S&amp;P 500 未來 30 天的預期波動。來源:FRED VIXCLS。</p>
+</article></div></section>
+
+  <section id="method" class="gx-card gx-method">
+    <h3 style="color: var(--color-fg);">判讀方法與更新</h3>
+    <ul>
+      <li>燈號:每項指標依卡片下方的門檻給綠(+1)、黃(0)、紅(−1)。趨勢圖底色即為燈號區間,圖下色條是每月燈號。</li>
+      <li>綜合分數:九個燈號加權平均(殖利率曲線、信用利差、ISM 製造業各 1.5 倍,其餘 1 倍),換算成 0–100 分。70 以上「擴張」、55–70「溫和成長」、40–55「放緩」、40 以下「衰退風險升高」。</li>
+      <li>資料:利率、殖利率、信用利差、TIPS、VIX 的燈號用最新一筆日資料,走勢圖用月平均;非農就業、PCE、ISM 為月資料,公布後才更新。</li>
+      <li>ISM PMI 由排程任務自動搜尋取得並與第二來源核對;費城聯準製造業調查作為交叉檢查。</li>
+      <li>自動更新時程(台北時間):利率、殖利率曲線、信用利差、TIPS、VIX 每週二至週六 08:50;ISM 製造業/服務業每月 1–7 日 23:50;非農就業與核心 PCE 每月 1–10 日及 22–31 日 21:50。每次只寫入已公布的新數據。</li><li>這是景氣訊號整理,不是精準預測,也不構成投資建議。</li>
+    </ul>
+  </section>
+</div>
+
+<script>
+const INDS = [{"key": "nfp", "name": "非農就業", "unit": "千人", "dec": 1, "levelDec": 1, "tickFmt": ",.0f", "monthly": true, "bands": [[0, Infinity, 1], [-50, 0, 0], [-Infinity, -50, -1]]}, {"key": "ism_mfg", "name": "ISM 製造業 PMI", "unit": "", "dec": 1, "levelDec": 1, "tickFmt": ".0f", "monthly": true, "bands": [[51, Infinity, 1], [49, 51, 0], [-Infinity, 49, -1]]}, {"key": "ism_svc", "name": "ISM 服務業 PMI", "unit": "", "dec": 1, "levelDec": 1, "tickFmt": ".0f", "monthly": true, "bands": [[51, Infinity, 1], [49, 51, 0], [-Infinity, 49, -1]]}, {"key": "ffr", "name": "聯邦基金利率", "unit": "%", "dec": 2, "levelDec": 2, "tickFmt": "+.2f", "monthly": false, "bands": [[-Infinity, -0.5, 1], [-0.5, 0.5, 0], [0.5, Infinity, -1]]}, {"key": "curve", "name": "殖利率曲線", "unit": "百分點", "dec": 2, "levelDec": 2, "tickFmt": ".1f", "monthly": false, "bands": [[0.25, Infinity, 1], [-0.25, 0.25, 0], [-Infinity, -0.25, -1]]}, {"key": "pce", "name": "核心 PCE 物價", "unit": "%", "dec": 2, "levelDec": 2, "tickFmt": ".1f", "monthly": true, "bands": [[1.5, 2.5, 1], [2.5, 3, 0], [1, 1.5, 0], [3, Infinity, -1], [-Infinity, 1, -1]]}, {"key": "hy", "name": "信用利差", "unit": "%", "dec": 2, "levelDec": 2, "tickFmt": ".1f", "monthly": false, "bands": [[-Infinity, 4, 1], [4, 6, 0], [6, Infinity, -1]]}, {"key": "tips", "name": "TIPS 利差", "unit": "%", "dec": 2, "levelDec": 2, "tickFmt": ".1f", "monthly": false, "bands": [[1.8, 2.4, 1], [2.4, 2.7, 0], [1.5, 1.8, 0], [2.7, Infinity, -1], [-Infinity, 1.5, -1]]}, {"key": "vix", "name": "VIX 恐慌指數", "unit": "", "dec": 2, "levelDec": 2, "tickFmt": ".0f", "monthly": false, "bands": [[15, 20, 1], [20, 30, 0], [-Infinity, 15, 0], [30, Infinity, -1]]}];
+const LCLASS = { '1': 'lg', '0': 'ly', '-1': 'lr' };
+const parseM = d3.utcParse('%Y-%m');
+
+dash.calc('readings', {
+  title: '九大指標讀數與燈號',
+  description: '把 FRED 與 ISM 原始數據換算成各指標的判讀數值,並依門檻給燈號(1 綠、0 黃、−1 紅)。',
+  inputs: ['fred_monthly', 'fred_latest', 'ism'],
+  fn: (fred_monthly, fred_latest, ism) => {
+    const S = {};
+    for (const r of [...fred_monthly, ...ism]) (S[r.series] ??= {})[r.month] = Number(r.value);
+    const L = {};
+    for (const r of fred_latest) {
+      // 日資料紀錄:每個數列取日期最新的一筆
+      const d = String(r.date).slice(0, 10);
+      if (!L[r.series] || d > L[r.series].date) L[r.series] = { date: d, value: Number(r.value) };
+    }
+    const shift = (m, k) => { const [y, mo] = m.split('-').map(Number); return new Date(Date.UTC(y, mo - 1 + k, 1)).toISOString().slice(0, 7); };
+    const r1 = (v) => Math.round(v * 10) / 10;
+    const r2 = (v) => Math.round(v * 100) / 100;
+    // band(值, 綠燈條件, 黃燈條件);都不符合即紅燈
+    const band = (v, green, yellow) => (green(v) ? 1 : yellow(v) ? 0 : -1);
+    const IND = {
+      // 非農就業:近 3 個月平均月增(千人)
+      nfp: { src: 'PAYEMS', round: r1, rule: (v) => band(v, (x) => x > 0, (x) => x >= -50),
+        calc: (m) => { const p = S.PAYEMS; const d = (k) => p[shift(m, -k)] - p[shift(m, -k - 1)]; return (d(0) + d(1) + d(2)) / 3; },
+        level: (m) => S.PAYEMS[m] - S.PAYEMS[shift(m, -1)] },
+      ism_mfg: { src: 'ISM_MFG', round: r1, rule: (v) => band(v, (x) => x >= 51, (x) => x >= 49), calc: (m) => S.ISM_MFG[m] },
+      ism_svc: { src: 'ISM_SVC', round: r1, rule: (v) => band(v, (x) => x >= 51, (x) => x >= 49), calc: (m) => S.ISM_SVC[m] },
+      // 聯邦基金利率:6 個月變化(百分點)
+      ffr: { src: 'FEDFUNDS', daily: 'DFF', round: r2, rule: (v) => band(v, (x) => x <= -0.5, (x) => x < 0.5),
+        calc: (m) => S.FEDFUNDS[m] - S.FEDFUNDS[shift(m, -6)], level: (m) => S.FEDFUNDS[m],
+        latest: (v, m) => v - S.FEDFUNDS[shift(m, -6)] },
+      // 殖利率曲線:10 年期減 3 個月期(百分點)
+      curve: { src: 'T10Y3M', daily: 'T10Y3M', round: r2, rule: (v) => band(v, (x) => x > 0.25, (x) => x >= -0.25), calc: (m) => S.T10Y3M[m] },
+      // 核心 PCE 物價年增率(%)
+      pce: { src: 'PCEPILFE', round: r2, rule: (v) => band(v, (x) => x >= 1.5 && x <= 2.5, (x) => x >= 1 && x <= 3),
+        calc: (m) => (S.PCEPILFE[m] / S.PCEPILFE[shift(m, -12)] - 1) * 100 },
+      // 高收益債信用利差(%)
+      hy: { src: 'BAMLH0A0HYM2', daily: 'BAMLH0A0HYM2', round: r2, rule: (v) => band(v, (x) => x < 4, (x) => x <= 6), calc: (m) => S.BAMLH0A0HYM2[m] },
+      // 10 年期平衡通膨率(TIPS 利差,%)
+      tips: { src: 'T10YIE', daily: 'T10YIE', round: r2, rule: (v) => band(v, (x) => x >= 1.8 && x <= 2.4, (x) => x >= 1.5 && x <= 2.7), calc: (m) => S.T10YIE[m] },
+      vix: { src: 'VIXCLS', daily: 'VIXCLS', round: r2, rule: (v) => band(v, (x) => x >= 15 && x <= 20, (x) => x <= 30), calc: (m) => S.VIXCLS[m] },
+    };
+    const LABEL = { '1': '綠燈', '0': '黃燈', '-1': '紅燈' };
+    const out = [];
+    for (const [key, ind] of Object.entries(IND)) {
+      const months = Object.keys(S[ind.src] || {}).filter((m) => m >= '2024-10').sort();
+      const rows = [];
+      for (const m of months) {
+        const v = ind.calc(m);
+        if (!Number.isFinite(v)) continue;
+        rows.push({ key, month: m, asof: m, kind: '月資料', value: ind.round(v), level: ind.round(ind.level ? ind.level(m) : v) });
+      }
+      const l = ind.daily && L[ind.daily];
+      if (l) {
+        const m = l.date.slice(0, 7);
+        const v = ind.latest ? ind.latest(l.value, m) : l.value;
+        if (m > (rows.length ? rows[rows.length - 1].month : '') && Number.isFinite(v)) {
+          rows.push({ key, month: m, asof: l.date, kind: '最新日資料', value: ind.round(v), level: ind.round(l.value) });
+        }
+      }
+      rows.forEach((r, i) => {
+        r.light = ind.rule(r.value);
+        r.light_label = LABEL[String(r.light)];
+        r.delta = i ? ind.round(r.value - rows[i - 1].value) : null;
+      });
+      out.push(...rows);
+    }
+    return out;
+  },
+});
+
+dash.calc('score', {
+  title: '綜合景氣分數',
+  description: '每月把九個燈號加權平均(殖利率曲線、信用利差、ISM 製造業權重 1.5),換算成 0–100 分並對應半年展望;month=now 為目前。',
+  inputs: ['readings'],
+  fn: (readings) => {
+    const W = { ism_mfg: 1.5, curve: 1.5, hy: 1.5 };
+    const keys = [...new Set(readings.map((r) => r.key))];
+    const months = [...new Set(readings.filter((r) => r.kind === '月資料').map((r) => r.month))].sort().slice(-24);
+    const pick = (m) => keys.map((k) => readings.filter((r) => r.key === k && (m === 'now' || (r.kind === '月資料' && r.month <= m))).pop()).filter(Boolean);
+    return [...months, 'now'].map((m) => {
+      const rs = pick(m);
+      let s = 0, w = 0;
+      for (const r of rs) { const wt = W[r.key] ?? 1; s += wt * r.light; w += wt; }
+      const idx = Math.round((s / w + 1) * 50);
+      const outlook = idx >= 70 ? '擴張' : idx >= 55 ? '溫和成長' : idx >= 40 ? '放緩' : '衰退風險升高';
+      return { month: m, idx, outlook, n_green: rs.filter((r) => r.light === 1).length, n_yellow: rs.filter((r) => r.light === 0).length, n_red: rs.filter((r) => r.light === -1).length };
+    });
+  },
+});
+
+const fmtN = (v, dec) => (v == null || !Number.isFinite(v) ? '—' : v.toFixed(dec));
+
+function failBox(el, show) {
+  el.replaceChildren();
+  if (show) { const d = document.createElement('div'); d.className = 'gx-fail'; const i = document.createElement('i'); d.append(i, '無法載入'); el.append(d); }
+}
+
+function drawChart(el, rows, opt) {
+  el.replaceChildren();
+  const W = el.clientWidth;
+  if (!W || !rows.length) return;
+  const H = opt.height || 140;
+  const pts = rows.map((r) => ({ ...r, d: parseM(r.month) })).filter((p) => p.d && Number.isFinite(p.v));
+  const vals = pts.map((p) => p.v);
+  let lo = d3.min(vals), hi = d3.max(vals);
+  const span = Math.max(hi - lo, Math.abs(hi) * 0.1, 0.5);
+  const edges = [...new Set(opt.bands.flatMap((b) => [b[0], b[1]]).filter(Number.isFinite))];
+  for (const e of edges) if (e >= lo - span * 0.6 && e <= hi + span * 0.6) { lo = Math.min(lo, e); hi = Math.max(hi, e); }
+  const pad = (hi - lo) * 0.08 || 1;
+  lo -= pad; hi += pad;
+
+  const svg = d3.select(el).append('svg').attr('width', '100%').attr('viewBox', `0 0 ${W} ${H}`).attr('height', H);
+  const y0 = d3.scaleLinear([lo, hi], [H - 22, 6]);
+  const ticks = y0.ticks(4);
+  const probe = svg.append('g');
+  let ml = 0;
+  for (const t of ticks) { const tx = probe.append('text').style('font-size', 'var(--cds-font-size-caption)').text(opt.tick(t)); ml = Math.max(ml, tx.node().getComputedTextLength()); }
+  probe.remove();
+  const m = { l: ml + 8, r: 12, t: 6, b: 22 };
+  const x = d3.scaleUtc(d3.extent(pts, (p) => p.d), [m.l, W - m.r]);
+  const y = d3.scaleLinear([lo, hi], [H - m.b, m.t]);
+
+  const COLOR = { '1': 'var(--color-ok)', '0': 'var(--gx-yellow)', '-1': 'var(--color-bad)' };
+  for (const [a, b, l] of opt.bands) {
+    const ya = y(Math.max(Math.min(a, hi), lo)), yb = y(Math.max(Math.min(b, hi), lo));
+    if (Math.abs(ya - yb) < 0.5) continue;
+    svg.append('rect').attr('x', m.l).attr('width', W - m.l - m.r).attr('y', Math.min(ya, yb)).attr('height', Math.abs(ya - yb))
+      .style('fill', COLOR[String(l)]).style('opacity', 0.09);
+  }
+  svg.append('g').selectAll('line').data(ticks).join('line').attr('x1', m.l).attr('x2', W - m.r).attr('y1', (t) => y(t)).attr('y2', (t) => y(t)).style('stroke', 'var(--cds-chart-grid)');
+  svg.append('g').selectAll('text').data(ticks).join('text').attr('x', m.l - 6).attr('y', (t) => y(t)).attr('dy', '0.32em').attr('text-anchor', 'end')
+    .style('font-size', 'var(--cds-font-size-caption)').style('fill', 'var(--color-fg-muted)').style('font-variant-numeric', 'tabular-nums').text(opt.tick);
+  for (const e of edges) if (e > lo && e < hi) {
+    svg.append('line').attr('x1', m.l).attr('x2', W - m.r).attr('y1', y(e)).attr('y2', y(e)).style('stroke', 'var(--cds-chart-reference)').style('stroke-dasharray', '3 3');
+  }
+  const xt = W < 420 ? d3.utcMonth.every(6) : d3.utcMonth.every(3);
+  const xa = svg.append('g').attr('transform', `translate(0,${H - m.b})`).call(d3.axisBottom(x).ticks(xt).tickFormat(d3.utcFormat('%y/%m')).tickSize(0).tickPadding(8));
+  xa.attr('font-size', null).attr('font-family', null);
+  xa.select('.domain').style('stroke', 'var(--cds-chart-axis)');
+  xa.selectAll('text').style('fill', 'var(--color-fg-muted)').style('font-size', 'var(--cds-font-size-caption)');
+
+  svg.append('path').datum(pts).attr('d', d3.line((p) => x(p.d), (p) => y(p.v)))
+    .style('fill', 'none').style('stroke', dash.colors[0]).style('stroke-width', 2).style('stroke-linecap', 'round').style('stroke-linejoin', 'round');
+  const last = pts[pts.length - 1];
+  svg.append('circle').attr('cx', x(last.d)).attr('cy', y(last.v)).attr('r', 4).style('fill', COLOR[String(last.light)]).style('stroke', 'var(--color-panel)').style('stroke-width', 1.5);
+
+  const tip = document.createElement('div'); tip.className = 'gx-tip'; el.append(tip);
+  const hov = svg.append('circle').attr('r', 4).style('fill', dash.colors[0]).style('display', 'none');
+  const bis = d3.bisector((p) => p.d).center;
+  svg.append('rect').attr('x', m.l).attr('y', 0).attr('width', W - m.l - m.r).attr('height', H).style('fill', 'transparent')
+    .on('mousemove', (ev) => {
+      const [mx] = d3.pointer(ev);
+      const p = pts[bis(pts, x.invert(mx))];
+      hov.style('display', null).attr('cx', x(p.d)).attr('cy', y(p.v));
+      tip.replaceChildren();
+      const t = document.createElement('div'); t.className = 't'; t.textContent = opt.label(p); tip.append(t);
+      const v = document.createElement('div'); v.textContent = opt.tipVal(p); tip.append(v);
+      tip.style.display = 'block';
+      const tw = tip.offsetWidth;
+      tip.style.left = Math.max(0, Math.min(W - tw, x(p.d) - tw / 2)) + 'px';
+      tip.style.top = Math.max(0, y(p.v) - tip.offsetHeight - 10) + 'px';
+    })
+    .on('mouseleave', () => { hov.style('display', 'none'); tip.style.display = 'none'; });
+}
+
+function drawStrip(el, rows) {
+  el.replaceChildren();
+  for (const r of rows) {
+    const s = document.createElement('span');
+    s.className = LCLASS[String(r.light)] || '';
+    s.title = `${r.kind === '月資料' ? r.month : r.asof}:${r.light_label}`;
+    el.append(s);
+  }
+}
+
+const NAMES = Object.fromEntries(INDS.map((d) => [d.key, d.name]));
+
+dash.onData(() => {
+  const R = dash.data('readings');
+  const Sc = dash.data('score');
+  const rOk = R.status === 'ok' && Array.isArray(R.data);
+  const sOk = Sc.status === 'ok' && Array.isArray(Sc.data);
+  const rFail = ['error', 'connect', 'declined'].includes(R.status);
+  const sFail = ['error', 'connect', 'declined'].includes(Sc.status);
+  const rows = rOk ? R.data : [];
+  const byKey = d3.group(rows, (r) => r.key);
+
+  // 指標卡
+  for (const ind of INDS) {
+    const rs = byKey.get(ind.key) || [];
+    const last = rs[rs.length - 1];
+    const where = last ? `key=${ind.key}&month=${last.month}` : null;
+    document.querySelectorAll(`[data-k="${ind.key}"][data-field]`).forEach((el) => {
+      if (!last) { el.textContent = '—'; return; }
+      el.setAttribute('data-where', where);
+      const f = el.getAttribute('data-field');
+      const v = last[f];
+      if (f === 'light_label' || f === 'asof') el.textContent = v ?? '—';
+      else el.textContent = fmtN(v, f === 'level' ? ind.levelDec : ind.dec);
+      el.classList.remove('dash-skeleton');
+    });
+    document.querySelectorAll(`[data-plus="${ind.key}"]`).forEach((el) => {
+      const f = el.getAttribute('data-plus-field');
+      el.textContent = last && last[f] > 0 ? '+' : '';
+    });
+    const dot = document.querySelector(`#card-${ind.key} .gx-badge .dot`);
+    if (dot) dot.className = 'dot ' + (last ? LCLASS[String(last.light)] : '');
+    const ch = document.querySelector(`#card-${ind.key} .gx-chart`);
+    if (rFail) failBox(ch, true);
+    else drawChart(ch, rs.map((r) => ({ ...r, v: r.value })), {
+      bands: ind.bands,
+      tick: (t) => d3.format(ind.tickFmt)(t),
+      label: (p) => (p.kind === '月資料' ? p.month + '(月' + (ind.monthly ? '' : '平均') + ')' : p.asof + '(最新)'),
+      tipVal: (p) => `${fmtN(p.v, ind.dec)} ${ind.unit} · ${p.light_label}`,
+    });
+    const st = document.querySelector(`#card-${ind.key} .gx-strip`);
+    drawStrip(st, rs);
+  }
+
+  // 費城聯準製造業調查(交叉檢查)
+  const F = dash.data('fred_monthly');
+  const ph = document.getElementById('philly');
+  if (ph) {
+    const prs = F.status === 'ok' && Array.isArray(F.data) ? F.data.filter((r) => r.series === 'PHILLY').sort((a, b) => (a.month < b.month ? -1 : 1)) : [];
+    const p = prs[prs.length - 1];
+    if (p) { ph.setAttribute('data-where', `series=PHILLY&month=${p.month}`); ph.textContent = fmtN(Number(p.value), 1); document.getElementById('philly-m').textContent = p.month; }
+  }
+
+  // 綜合分數
+  const sc = sOk ? Sc.data : [];
+  const now = sc.find((r) => r.month === 'now');
+  document.querySelectorAll('[data-source="score"][data-where="month=now"]').forEach((el) => {
+    const f = el.getAttribute('data-field');
+    el.textContent = now ? String(now[f]) : '—';
+    el.classList.remove('dash-skeleton');
+  });
+  const hist = sc.filter((r) => r.month !== 'now');
+  const prev = hist.length >= 4 ? hist[hist.length - 4] : null;
+  const pIdx = document.getElementById('prev-idx'), pOut = document.getElementById('prev-outlook');
+  if (prev) {
+    pIdx.setAttribute('data-where', `month=${prev.month}`); pIdx.textContent = String(prev.idx);
+    pOut.setAttribute('data-where', `month=${prev.month}`); pOut.textContent = prev.outlook;
+    document.getElementById('prev-month').textContent = prev.month;
+  }
+  const tr = document.getElementById('outlook-trend');
+  if (now && prev) {
+    const d = now.idx - prev.idx;
+    tr.textContent = d >= 8 ? '分數較 3 個月前明顯上升,景氣動能增強。'
+      : d <= -8 ? '分數較 3 個月前明顯下滑,需留意景氣轉弱。'
+      : '分數與 3 個月前相近,景氣動能大致持穩。';
+  } else tr.textContent = '';
+  const warn = document.getElementById('take-warn');
+  if (rOk) {
+    const lasts = INDS.map((ind) => (byKey.get(ind.key) || []).slice(-1)[0]).filter(Boolean);
+    const reds = lasts.filter((r) => r.light === -1).map((r) => NAMES[r.key]);
+    const yel = lasts.filter((r) => r.light === 0).map((r) => NAMES[r.key]);
+    warn.textContent = (reds.length ? '紅燈:' + reds.join('、') + '。' : '') + (yel.length ? '黃燈:' + yel.join('、') + '。' : '');
+  }
+  const sch = document.getElementById('score-chart');
+  if (sFail) failBox(sch, true);
+  else drawChart(sch, hist.map((r) => ({ ...r, v: r.idx, light: r.idx >= 55 ? 1 : r.idx >= 40 ? 0 : -1, kind: '月資料' })), {
+    height: 200,
+    bands: [[55, 100, 1], [40, 55, 0], [0, 40, -1], [70, 70, 1]],
+    tick: (t) => d3.format('d')(t),
+    label: (p) => p.month,
+    tipVal: (p) => `${p.idx} 分 · ${p.outlook}(綠 ${p.n_green} / 黃 ${p.n_yellow} / 紅 ${p.n_red})`,
+  });
+});
+</script>
+
+<footer class="gx-site-foot">資料最後更新:<span id="site-updated">—</span>(台北時間)。資料來源:聖路易斯聯準銀行 FRED、ISM。本頁為景氣訊號整理,不構成投資建議。</footer>
+</div>
+</body>
+</html>
